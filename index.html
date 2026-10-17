@@ -464,6 +464,38 @@ body{
   .bottom-nav .nav-add:active{transform:none}
 }
 
+
+/* Junto · subtle screen and menu motion · v1 */
+@keyframes junto-view-arrive{from{opacity:.62;transform:translate3d(0,7px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes junto-overlay-arrive{from{opacity:0}to{opacity:1}}
+@keyframes junto-overlay-leave{from{opacity:1}to{opacity:0}}
+@keyframes junto-sheet-arrive{from{opacity:.82;transform:translate3d(0,20px,0) scale(.994)}to{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+@keyframes junto-sheet-leave{from{opacity:1;transform:translate3d(0,0,0) scale(1)}to{opacity:0;transform:translate3d(0,12px,0) scale(.995)}}
+#main-content .view.view-enter{animation:junto-view-arrive 215ms cubic-bezier(.22,.74,.25,1) both}
+.bottom-nav .nav-item,.side-nav button{
+ transition:background-color 220ms ease,color 220ms ease,border-color 220ms ease,box-shadow 220ms ease;
+}
+.bottom-nav .nav-item .ic,.side-nav button .ic{
+ transition:transform 220ms cubic-bezier(.2,.7,.3,1),stroke-width 220ms ease;
+}
+.bottom-nav .nav-item.active .ic{transform:translate3d(0,-1px,0) scale(1.06)}
+.side-nav button.active .ic{transform:translateX(2px)}
+:is(.mode-pills button,.person-switch button,.seg-button,.profile-button,.scan-select button,.chip,.month-control button,.theme-toggle,.modal-close){
+ transition:background-color 200ms ease,color 200ms ease,border-color 200ms ease,box-shadow 200ms ease,transform 160ms ease;
+}
+.modal-backdrop{animation:junto-overlay-arrive 175ms ease-out both}
+.modal-backdrop .modal-sheet{animation:junto-sheet-arrive 225ms cubic-bezier(.22,.8,.26,1) both}
+.modal-backdrop.is-closing{pointer-events:none;animation:junto-overlay-leave 165ms ease-in both}
+.modal-backdrop.is-closing .modal-sheet{animation:junto-sheet-leave 165ms ease-in both}
+@media(min-width:680px){
+ @keyframes junto-sheet-arrive{from{opacity:.82;transform:translate3d(0,12px,0) scale(.985)}to{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+}
+@media(prefers-reduced-motion:reduce){
+ #main-content .view.view-enter,.modal-backdrop,.modal-backdrop .modal-sheet,.modal-backdrop.is-closing,.modal-backdrop.is-closing .modal-sheet{animation:none!important}
+ .bottom-nav .nav-item,.side-nav button,.bottom-nav .nav-item .ic,.side-nav button .ic,
+ :is(.mode-pills button,.person-switch button,.seg-button,.profile-button,.scan-select button,.chip,.month-control button,.theme-toggle,.modal-close){transition:none!important}
+}
+
 </style>
   <title>Junto — Finanças pessoais e a dois</title>
 </head>
@@ -545,7 +577,7 @@ const initials=id=>nameOf(id).trim().slice(0,1).toLocaleUpperCase('pt-BR');
 const memberOptions=selected=>data.people.map(p=>`<option value="${p.id}" ${p.id===selected?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
 const store=()=>{try{localStorage.setItem(STORE_KEY,JSON.stringify(data));return true}catch(e){notify('Não foi possível salvar neste navegador');console.error(e);return false}};
 function notify(message){const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2700)}
-function changeView(next){if(view in monthsByView)monthsByView[view]=selectedMonth;view=next;selectedMonth=monthsByView[next]||selectedMonth;render();window.scrollTo(0,0)}
+function changeView(next){if(next===view)return;if(view in monthsByView)monthsByView[view]=selectedMonth;view=next;selectedMonth=monthsByView[next]||selectedMonth;render(true);window.scrollTo(0,0)}
 const monthEntries=(ym=selectedMonth)=>data.transactions.filter(t=>sameMonth(t,ym));
 const poolFor=t=>t.pool||(t.type==='settlement'?'percent':(t.scope==='shared'?(t.split==='equal'?'equal':'percent'):'personal'));
 function balanceFor(pool){let b=0;for(const t of data.transactions){if(poolFor(t)!==pool)continue;if(t.type==='expense'&&t.scope==='shared')b+=t.payer==='a'?t.shares.b:-t.shares.a;if(t.type==='settlement')b+=t.from==='b'?-t.amountCents:t.amountCents;}return b;}
@@ -569,7 +601,22 @@ const monthControl=()=>`<div class="month-control" aria-label="Selecionar mês">
 const personSwitch=()=>`<div class="person-switch" role="group" aria-label="Selecionar pessoa">${data.people.map(p=>`<button type="button" class="${selectedPerson===p.id?'active':''}" data-action="select-person" data-person="${p.id}">${escapeHtml(firstName(p.id))}</button>`).join('')}</div>`;
 const pageHead=(eyebrow,title,sub,control=true)=>`<div class="page-head"><div><p class="eyebrow">${eyebrow}</p><h1 class="page-title">${title}</h1>${sub?`<p class="page-sub">${sub}</p>`:''}</div>${control?monthControl():''}</div>`;
 const statCard=(label,value,hint,more='')=>`<div class="stat-card ${more}"><div><div class="stat-label">${label}</div><div class="stat-value">${money(value)}</div>${hint?`<div class="stat-hint">${hint}</div>`:''}</div>${more.includes('wide')?`<div class="stat-icon">${icon('wallet')}</div>`:''}</div>`;
-function navRender(){const sidebar=document.getElementById('desktop-nav'),mobile=document.getElementById('mobile-nav');sidebar.innerHTML=NAV.map(([key,label])=>`<button type="button" data-nav="${key}" class="${key===view?'active':''}" ${key===view?'aria-current="page"':''}>${icon(ICONS[key])}${label}</button>`).join('');mobile.innerHTML=[mobileTab('home','Geral'),mobileTab('percent','Percentual'),`<button type="button" class="nav-add" data-action="new-entry" aria-label="Adicionar lançamento">${icon('plus')}</button>`,mobileTab('equal','50/50'),mobileTab('transactions','Movimentos')].join('');document.getElementById('top-avatar-a').textContent=initials('a');document.getElementById('top-avatar-b').textContent=initials('b');}
+function navRender(){
+ const sidebar=document.getElementById('desktop-nav'),mobile=document.getElementById('mobile-nav');
+ // Preserve existing buttons so selected states can transition instead of flashing.
+ if(!sidebar.childElementCount)sidebar.innerHTML=NAV.map(([key,label])=>`<button type="button" data-nav="${key}">${icon(ICONS[key])}${label}</button>`).join('');
+ if(!mobile.childElementCount)mobile.innerHTML=[mobileTab('home','Geral'),mobileTab('percent','Percentual'),`<button type="button" class="nav-add" data-action="new-entry" aria-label="Adicionar lançamento">${icon('plus')}</button>`,mobileTab('equal','50/50'),mobileTab('transactions','Movimentos')].join('');
+ for(const nav of [sidebar,mobile]){
+  nav.querySelectorAll('[data-nav]').forEach(button=>{
+   const active=button.dataset.nav===view;
+   button.classList.toggle('active',active);
+   if(active)button.setAttribute('aria-current','page');
+   else button.removeAttribute('aria-current');
+  });
+ }
+ document.getElementById('top-avatar-a').textContent=initials('a');
+ document.getElementById('top-avatar-b').textContent=initials('b');
+}
 const mobileTab=(key,label)=>`<button class="nav-item ${view===key?'active':''}" type="button" data-nav="${key}" ${view===key?'aria-current="page"':''}>${icon(ICONS[key])}<span>${label}</span></button>`;
 const emptyState=(heading='Nenhum lançamento por aqui',description='Adicione uma despesa para começar a organizar as contas.')=>`<div class="simple-empty"><div class="empty-icon">${icon('wallet')}</div><b>${heading}</b><p>${description}</p><button class="btn btn-primary" type="button" data-action="new-entry">${icon('plus')} Novo lançamento</button>${!data.transactions.length?`<button class="text-link" type="button" data-action="demo" style="display:block;margin:12px auto 0">Explorar com dados fictícios →</button>`:''}</div>`;
 function balanceCard(pool){const balance=balanceFor(pool),debtor=balance>0?'b':'a',creditor=balance>0?'a':'b',settled=balance===0;return `<section class="hero"><div class="hero-head"><span class="hero-overline">SALDO EM ABERTO · ${pool==='percent'?'PERCENTUAL':'50/50'}</span><span class="hero-icon">${icon('repeat')}</span></div><div class="hero-label">${settled?'As contas deste painel estão em dia':`${escapeHtml(firstName(debtor))} deve a ${escapeHtml(firstName(creditor))}`}</div><div class="hero-amount">${money(Math.abs(balance))}</div><p class="hero-description">${settled?'Nenhum valor pendente neste painel.':'Considera despesas e acertos deste painel em todos os meses, sem compensar o outro painel.'}</p><div class="hero-bottom"><div class="hero-people"><span class="avatar av-a">${escapeHtml(initials('a'))}</span><span class="avatar av-b">${escapeHtml(initials('b'))}</span><span>${pool==='percent'?pctLabel():'Divisão igualitária'}</span></div><button class="hero-btn" type="button" data-action="new-settlement" data-pool="${pool}" ${settled?'disabled':''}>Registrar acerto ${icon('arrow')}</button></div></section>`}
@@ -615,7 +662,7 @@ function animateCharts(){
  chartObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(entry.isIntersecting){entry.target.classList.add('motion-enter');chartObserver.unobserve(entry.target)}}},{threshold:.15});
  document.querySelectorAll('#main-content .graphic-card,#main-content .category-bar').forEach(el=>chartObserver.observe(el));
 }
-function render(){navRender();const main=document.getElementById('main-content');main.innerHTML=({home:renderHome,percent:()=>renderPool('percent'),equal:()=>renderPool('equal'),transactions:renderTransactions,settings:renderSettings}[view]||renderHome)();animateCharts();}
+function render(animatePage=false){navRender();const main=document.getElementById('main-content');main.innerHTML=({home:renderHome,percent:()=>renderPool('percent'),equal:()=>renderPool('equal'),transactions:renderTransactions,settings:renderSettings}[view]||renderHome)();if(animatePage)main.querySelector('.view')?.classList.add('view-enter');animateCharts();}
 function sharesFor(amount,mode,pct){let a;if(mode==='income'){const total=data.people[0].incomeCents+data.people[1].incomeCents;a=total>0?Math.round(amount*data.people[0].incomeCents/total):Math.round(amount/2)}else if(mode==='custom')a=Math.round(amount*Math.max(0,Math.min(100,pct))/100);else a=Math.round(amount/2);return {a,b:amount-a}}
 const scopeOptions=(scope)=>`<div class="selector-row" role="group" aria-label="Tipo de despesa"><button type="button" class="seg-button ${scope==='shared'?'active':''}" data-action="set-scope" data-scope="shared">Compartilhada</button><button type="button" class="seg-button ${scope==='personal'?'active':''}" data-action="set-scope" data-scope="personal">Pessoal</button></div>`;
 const splitOptions=(pool)=>`<div class="selector-row" role="group" aria-label="Escolher painel da despesa"><button type="button" class="seg-button ${pool==='percent'?'active':''}" data-action="set-pool" data-pool="percent">Percentual</button><button type="button" class="seg-button ${pool==='equal'?'active':''}" data-action="set-pool" data-pool="equal">50/50</button></div>`;
@@ -664,6 +711,15 @@ async function handleScanFile(file){if(!file||!currentModal?.scanner||scanBusy)r
 }
 
 function closeModal(){scanJobId++;scanBusy=false;releaseScanPreview();document.getElementById('modal-root').innerHTML='';document.body.classList.remove('modal-open');currentModal=null}
+function dismissModal(){
+ const backdrop=document.getElementById('modal-backdrop');
+ if(!backdrop)return;
+ if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){closeModal();return}
+ if(backdrop.classList.contains('is-closing'))return;
+ backdrop.classList.add('is-closing');
+ // Do not remove a newer dialog if a scan or other action replaces this one meanwhile.
+ setTimeout(()=>{if(document.getElementById('modal-backdrop')===backdrop)closeModal()},165);
+}
 function syncEntryForm(){const form=document.getElementById('entry-form');if(!form)return;const type=form.dataset.type,scope=form.dataset.scope,pool=form.dataset.pool;
  form.querySelectorAll('[data-only]').forEach(el=>el.classList.toggle('hidden',el.dataset.only!==type));
  form.querySelectorAll('[data-if-scope]').forEach(el=>el.classList.toggle('hidden',scope!==el.dataset.ifScope||el.dataset.only!==type));
@@ -698,12 +754,12 @@ function demo(){if(data.transactions.length&&!confirm('Substituir os registros a
  selectedMonth=ym;Object.keys(monthsByView).forEach(k=>monthsByView[k]=ym);categoryFilter='all';txSearch='';txFilter='all';view='home';const persisted=store();render();window.scrollTo(0,0);notify(persisted?'Dados fictícios carregados':'Não foi possível salvar o exemplo');
 }
 function reset(){if(!confirm('Apagar todos os registros e ajustes deste dispositivo? Esta ação não pode ser desfeita.'))return;data=blank();store();selectedPerson='a';selectedMonth=today().slice(0,7);Object.keys(monthsByView).forEach(k=>monthsByView[k]=selectedMonth);txSearch='';txFilter='all';view='home';render();notify('Dados apagados')}
-function handleAction(button){const act=button.dataset.action;switch(act){case 'entry-profile':{const form=document.getElementById('entry-form');const field=button.dataset.field,person=button.dataset.person;if(form&&['payer','member','from'].includes(field)&&['a','b'].includes(person)){form.elements[field].value=person;entryProfile=person;try{localStorage.setItem(PROFILE_KEY,person)}catch(e){}syncEntryForm()}break;}case 'open-scan':openScanModal(button.dataset.pool||((()=>{const f=document.getElementById('entry-form');return f?(f.dataset.scope==='personal'?'personal':f.dataset.pool):null})()));break;case 'scan-pool':if(!scanBusy){scanMode=button.dataset.pool;document.querySelectorAll('[data-action=scan-pool]').forEach(el=>el.classList.toggle('active',el.dataset.pool===scanMode));}break;case 'scan-camera':if(!scanBusy)document.getElementById('scan-camera').click();break;case 'scan-library':if(!scanBusy)document.getElementById('scan-library').click();break;case 'scan-manual':{const target=scanMode;closeModal();openEntryModal(null,'expense',target==='personal'?'personal':'shared',target==='personal'?'percent':target);break;}case 'new-entry':openEntryModal();break;case 'new-personal':openEntryModal(null,'expense','personal');break;case 'new-shared':openEntryModal(null,'expense','shared',button.dataset.pool||(['percent','equal'].includes(view)?view:'percent'));break;case 'new-settlement':openEntryModal(null,'settlement',null,button.dataset.pool||(['percent','equal'].includes(view)?view:'percent'));break;case 'open-settings':view='settings';render();window.scrollTo(0,0);break;case 'prev-month':selectedMonth=monthShift(selectedMonth,-1);monthsByView[view]=selectedMonth;render();break;case 'next-month':selectedMonth=monthShift(selectedMonth,1);monthsByView[view]=selectedMonth;render();break;case 'select-person':selectedPerson=button.dataset.person;render();break;case 'category-filter':categoryFilter=button.dataset.filter;render();break;case 'filter-tx':txFilter=button.dataset.filter;render();break;case 'edit-entry':{const item=data.transactions.find(x=>x.id===button.dataset.id);if(item)openEntryModal(item);break;}case 'close-modal':closeModal();break;case 'entry-type':{const f=document.getElementById('entry-form');f.dataset.type=button.dataset.type;syncEntryForm();break;}case 'set-scope':{const f=document.getElementById('entry-form');f.dataset.scope=button.dataset.scope;syncEntryForm();break;}case 'set-pool':{const f=document.getElementById('entry-form');const prev=f.dataset.pool;f.dataset.pool=button.dataset.pool;const pct=f.elements.percentage;if(pct&&f.dataset.pool==='percent'&&prev==='equal')pct.value=data.percentA;if(f.dataset.type==='settlement'){const bal=balanceFor(f.dataset.pool);if(Math.abs(bal))f.elements.amount.value=numeric(Math.abs(bal));f.elements.from.value=bal>0?'b':'a';}syncEntryForm();break;}case 'delete-entry':deleteEntry();break;case 'duplicate-entry':duplicateEntry();break;case 'export':exportData();break;case 'import':document.getElementById('import-file').click();break;case 'demo':demo();break;case 'reset':reset();break;}}
-document.addEventListener('click',e=>{const nav=e.target.closest('[data-nav]');if(nav){changeView(nav.dataset.nav);return}const act=e.target.closest('[data-action]');if(act){handleAction(act);return}if(e.target.id==='modal-backdrop')closeModal()});
+function handleAction(button){const act=button.dataset.action;switch(act){case 'entry-profile':{const form=document.getElementById('entry-form');const field=button.dataset.field,person=button.dataset.person;if(form&&['payer','member','from'].includes(field)&&['a','b'].includes(person)){form.elements[field].value=person;entryProfile=person;try{localStorage.setItem(PROFILE_KEY,person)}catch(e){}syncEntryForm()}break;}case 'open-scan':openScanModal(button.dataset.pool||((()=>{const f=document.getElementById('entry-form');return f?(f.dataset.scope==='personal'?'personal':f.dataset.pool):null})()));break;case 'scan-pool':if(!scanBusy){scanMode=button.dataset.pool;document.querySelectorAll('[data-action=scan-pool]').forEach(el=>el.classList.toggle('active',el.dataset.pool===scanMode));}break;case 'scan-camera':if(!scanBusy)document.getElementById('scan-camera').click();break;case 'scan-library':if(!scanBusy)document.getElementById('scan-library').click();break;case 'scan-manual':{const target=scanMode;closeModal();openEntryModal(null,'expense',target==='personal'?'personal':'shared',target==='personal'?'percent':target);break;}case 'new-entry':openEntryModal();break;case 'new-personal':openEntryModal(null,'expense','personal');break;case 'new-shared':openEntryModal(null,'expense','shared',button.dataset.pool||(['percent','equal'].includes(view)?view:'percent'));break;case 'new-settlement':openEntryModal(null,'settlement',null,button.dataset.pool||(['percent','equal'].includes(view)?view:'percent'));break;case 'open-settings':changeView('settings');break;case 'prev-month':selectedMonth=monthShift(selectedMonth,-1);monthsByView[view]=selectedMonth;render();break;case 'next-month':selectedMonth=monthShift(selectedMonth,1);monthsByView[view]=selectedMonth;render();break;case 'select-person':selectedPerson=button.dataset.person;render();break;case 'category-filter':categoryFilter=button.dataset.filter;render();break;case 'filter-tx':txFilter=button.dataset.filter;render();break;case 'edit-entry':{const item=data.transactions.find(x=>x.id===button.dataset.id);if(item)openEntryModal(item);break;}case 'close-modal':dismissModal();break;case 'entry-type':{const f=document.getElementById('entry-form');f.dataset.type=button.dataset.type;syncEntryForm();break;}case 'set-scope':{const f=document.getElementById('entry-form');f.dataset.scope=button.dataset.scope;syncEntryForm();break;}case 'set-pool':{const f=document.getElementById('entry-form');const prev=f.dataset.pool;f.dataset.pool=button.dataset.pool;const pct=f.elements.percentage;if(pct&&f.dataset.pool==='percent'&&prev==='equal')pct.value=data.percentA;if(f.dataset.type==='settlement'){const bal=balanceFor(f.dataset.pool);if(Math.abs(bal))f.elements.amount.value=numeric(Math.abs(bal));f.elements.from.value=bal>0?'b':'a';}syncEntryForm();break;}case 'delete-entry':deleteEntry();break;case 'duplicate-entry':duplicateEntry();break;case 'export':exportData();break;case 'import':document.getElementById('import-file').click();break;case 'demo':demo();break;case 'reset':reset();break;}}
+document.addEventListener('click',e=>{const nav=e.target.closest('[data-nav]');if(nav){changeView(nav.dataset.nav);return}const act=e.target.closest('[data-action]');if(act){handleAction(act);return}if(e.target.id==='modal-backdrop')dismissModal()});
 document.addEventListener('submit',e=>{if(e.target.id==='entry-form'){e.preventDefault();submitEntry(e.target)}else if(e.target.id==='settings-form'){e.preventDefault();saveSettings(e.target)}else if(e.target.id==='percent-form'){e.preventDefault();const p=Number(e.target.elements.percentA.value);if(!Number.isFinite(p)||p<0||p>100){notify('Informe uma porcentagem entre 0 e 100');return}data.percentA=p;const saved=store();render();notify(saved?'Porcentagem padrão atualizada':'Não foi possível salvar')}});
 document.addEventListener('input',e=>{if(e.target.id==='tx-search'){txSearch=e.target.value;const list=document.getElementById('transaction-list');if(list)list.innerHTML=movementList();const count=document.getElementById('tx-count');if(count)count.textContent=`${filterEntries().length} lançamentos`;}if(e.target.id==='percent-a'){const p=Number(e.target.value),el=document.getElementById('pct-description');if(el&&Number.isFinite(p))el.textContent=`${nameOf('a')}: ${p.toLocaleString('pt-BR')}% · ${nameOf('b')}: ${(100-p).toLocaleString('pt-BR')}%`;}if(e.target.closest('#entry-form'))syncEntryForm()});
 document.addEventListener('change',e=>{if(e.target.closest('#entry-form'))syncEntryForm()});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.querySelector('.modal-backdrop'))closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.querySelector('.modal-backdrop'))dismissModal()});
 ['scan-camera','scan-library'].forEach(id=>document.getElementById(id).addEventListener('change',e=>{const file=e.target.files?.[0];e.target.value='';if(file)handleScanFile(file)}));
 document.getElementById('import-file').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{const content=await file.text();const incoming=validateLoaded(JSON.parse(content));if(!confirm(`Importar ${incoming.transactions.length} lançamentos? Os dados atuais serão substituídos.`))return;data=incoming;const persisted=store();view='home';selectedMonth=today().slice(0,7);Object.keys(monthsByView).forEach(k=>monthsByView[k]=selectedMonth);render();notify(persisted?'Backup importado com sucesso':'Importação não salva neste dispositivo')}catch(err){console.error(err);notify('Arquivo inválido ou incompatível')}finally{e.target.value=''}});
 render();
